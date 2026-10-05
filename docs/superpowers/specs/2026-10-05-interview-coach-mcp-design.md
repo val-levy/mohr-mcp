@@ -4,6 +4,9 @@ Date: 2026-10-05
 Source: `0001_mcp_initial_design.md` (the "initial design"). This spec turns it into
 a buildable v1 and records every place it departs from that document.
 
+> Transport, storage, access control and the tool list are revised by
+> `2026-10-05-hosted-interview-coach-design.md`. Where the two differ, that document wins.
+
 ## 1. Purpose
 
 A local MCP server that is the memory and toolkit for Claude acting as a technical
