@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -96,6 +96,19 @@ describe('openDb on disk', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(statSync(`${path}-wal`).mode & 0o777).toBe(0o600);
     db.close();
+  });
+
+  it.skipIf(process.platform === 'win32')('tightens a database and sidecar files left readable by others', () => {
+    dir = mkdtempSync(join(tmpdir(), 'coach-'));
+    const path = join(dir, 'coach.db');
+    const first = openDb(path);
+    seedEvent(first);
+    const files = [path, `${path}-wal`, `${path}-shm`];
+    for (const file of files) chmodSync(file, 0o644);
+    const second = openDb(path);
+    for (const file of files) expect(statSync(file).mode & 0o777).toBe(0o600);
+    second.close();
+    first.close();
   });
 });
 

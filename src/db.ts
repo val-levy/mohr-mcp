@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -94,10 +94,16 @@ export function defaultDbPath(): string {
 export function openDb(path: string): Db {
   const onDisk = path !== ':memory:';
   // The database holds resumes and interview answers: keep it private to this user.
-  if (onDisk) mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  if (onDisk) {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    // Create the file owner-only up front, so it is never briefly readable by others.
+    closeSync(openSync(path, 'a', 0o600));
+    // A database from an earlier run, and its WAL sidecar files, may have looser modes.
+    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(file)) chmodSync(file, 0o600);
+    }
+  }
   const db = new Database(path);
-  // Before WAL is enabled, so the -wal and -shm files inherit the same mode.
-  if (onDisk) chmodSync(path, 0o600);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
