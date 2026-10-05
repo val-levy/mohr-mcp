@@ -21,7 +21,7 @@ function seedEvent(db: Db): void {
 }
 
 describe('openDb', () => {
-  it('creates all six tables', () => {
+  it('creates the six data tables and the migration log', () => {
     const db = openDb(':memory:');
     const names = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
@@ -32,6 +32,7 @@ describe('openDb', () => {
       'interview_events',
       'interviews',
       'jobs',
+      'schema_migrations',
       'skill_assessment_history',
       'skill_assessments',
     ]);

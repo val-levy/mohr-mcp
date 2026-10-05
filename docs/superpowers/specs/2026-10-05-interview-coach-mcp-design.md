@@ -29,7 +29,12 @@ In scope:
 
 Out of scope for v1: everything under "Future MCP Extensions" in the initial
 design, HTTP transport, multi-user access control, pagination, idempotency keys,
-schema migrations beyond "create tables if missing", and delete tools.
+down-migrations, and delete tools.
+
+The schema lives in versioned SQL files under `migrations/` (`0001_initial_schema.sql`,
+...), never inside TypeScript. On startup `migrate.ts` applies every file the database
+has not seen, each in its own transaction, and records it in `schema_migrations`. A
+schema change is a new numbered file; applied files are never edited.
 
 ## 3. Departures from the initial design
 
@@ -54,7 +59,8 @@ Stack: TypeScript on Node 24, `@modelcontextprotocol/sdk`, `zod`, `better-sqlite
 src/
   index.ts        stdio entry point: open db, build server, connect transport
   server.ts       tool registry; wraps every handler in the envelope
-  db.ts           open database, create schema, transaction helper
+  db.ts           open database, run migrations, transaction helper
+  migrate.ts      applies pending migrations/*.sql, tracks them in schema_migrations
   errors.ts       error codes, CoachError, zod and SQLite error mapping
   schemas.ts      strict zod input schemas, one per tool
   tools/

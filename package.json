@@ -6,6 +6,10 @@
   "bin": {
     "interview-coach-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "engines": {
     "node": ">=24"
   },
