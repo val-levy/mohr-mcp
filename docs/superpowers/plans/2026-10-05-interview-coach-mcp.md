@@ -27,7 +27,7 @@
 - Logging goes to stderr only and contains at most tool name, success flag, error code and duration. Never log arguments or results.
 - Database path: `COACH_DB_PATH` if set, else `~/.interview-coach/coach.db`.
 - Tests call tools through `callTool` on a fresh `:memory:` database. No test may touch `~/.interview-coach`.
-- End every commit message with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit messages carry no `Co-Authored-By` trailer or other AI attribution.
 
 One file beyond the spec's layout: `src/tool.ts` holds `Tool`, `defineTool` and `callTool`, so tool modules and `server.ts` can both import them without a cycle. `src/tools/index.ts` holds the registry.
 
