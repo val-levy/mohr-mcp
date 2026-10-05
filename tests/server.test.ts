@@ -1,8 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type Db, openDb } from '../src/db.js';
-import { buildServer } from '../src/server.js';
+import { type Db, openDb } from '../src/storage/database.js';
+import { buildServer } from '../src/core/server.js';
+import { tools } from '../src/registry.js';
 
 let db: Db;
 let client: Client;
@@ -14,7 +15,7 @@ beforeEach(async () => {
     logged.push(parts.map(String).join(' '));
   });
   db = openDb(':memory:');
-  const server = buildServer(db);
+  const server = buildServer(db, tools);
   const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: 'test-client', version: '0.0.0' });
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);

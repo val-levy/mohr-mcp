@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tools } from '../src/tools/index.js';
+import { tools } from '../src/registry.js';
 import { advance, fail, ok, useDb } from './helpers.js';
 
 const getDb = useDb();

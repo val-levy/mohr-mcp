@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Db } from '../src/db.js';
-import { MIGRATIONS_DIR, migrate } from '../src/migrate.js';
+import type { Db } from '../src/storage/database.js';
+import { MIGRATIONS_DIR, migrate } from '../src/storage/migrator.js';
 
 let dir: string;
 let db: Db;

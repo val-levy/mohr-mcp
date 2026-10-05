@@ -1,8 +1,8 @@
-import { type Db, newId, now, tx } from '../db.js';
-import { CoachError } from '../errors.js';
-import { createTargetJobInput, getTargetJobInput, listTargetJobsInput } from '../schemas.js';
-import { type Tool, defineTool } from '../tool.js';
-import { requireCandidate } from './candidates.js';
+import { type Db, newId, now, tx } from '../storage/database.js';
+import { CoachError } from '../core/errors.js';
+import { createTargetJobInput, getTargetJobInput, listTargetJobsInput } from './schemas.js';
+import { type Tool, defineTool } from '../core/envelope.js';
+import { requireCandidate } from '../candidates/tools.js';
 
 interface JobRow {
   id: string;

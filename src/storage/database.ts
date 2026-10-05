@@ -3,7 +3,7 @@ import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
-import { migrate } from './migrate.js';
+import { migrate } from './migrator.js';
 
 export type Db = Database.Database;
 

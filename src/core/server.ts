@@ -2,18 +2,17 @@ import { readFileSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import type { Db } from './db.js';
-import { type Envelope, callTool } from './tool.js';
-import { tools } from './tools/index.js';
+import type { Db } from '../storage/database.js';
+import { type Envelope, type Tool, callTool } from './envelope.js';
+import { packagePath } from './paths.js';
 
-// Resolves against the package root from both src/ and the compiled dist/.
 function readPackageFile(relativePath: string): string {
-  return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+  return readFileSync(packagePath(relativePath), 'utf8');
 }
 
 type ObjectSchema = { type: 'object'; [key: string]: unknown };
 
-export function buildServer(db: Db): Server {
+export function buildServer(db: Db, tools: Tool[]): Server {
   const { version } = JSON.parse(readPackageFile('package.json')) as { version: string };
   const instructions = readPackageFile('prompts/server_instructions.md').trim();
   const byName = new Map(tools.map((tool) => [tool.name, tool]));

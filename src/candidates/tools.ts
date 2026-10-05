@@ -1,12 +1,12 @@
-import { type Db, newId, now, tx } from '../db.js';
-import { CoachError } from '../errors.js';
+import { type Db, newId, now, tx } from '../storage/database.js';
+import { CoachError } from '../core/errors.js';
 import {
   createCandidateInput,
   getCandidateProfileInput,
   listCandidatesInput,
   updateCandidateProfileInput,
-} from '../schemas.js';
-import { type Tool, defineTool } from '../tool.js';
+} from './schemas.js';
+import { type Tool, defineTool } from '../core/envelope.js';
 
 interface CandidateRow {
   id: string;

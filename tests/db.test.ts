@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type Db, defaultDbPath, newId, now, openDb, tx } from '../src/db.js';
+import { type Db, defaultDbPath, newId, now, openDb, tx } from '../src/storage/database.js';
 
 function seedEvent(db: Db): void {
   const t = now();

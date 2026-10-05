@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, vi } from 'vitest';
-import { type Db, openDb } from '../src/db.js';
-import type { ErrorBody } from '../src/errors.js';
-import { type Envelope, callTool } from '../src/tool.js';
-import { tools } from '../src/tools/index.js';
+import { type Db, openDb } from '../src/storage/database.js';
+import type { ErrorBody } from '../src/core/errors.js';
+import { type Envelope, callTool } from '../src/core/envelope.js';
+import { tools } from '../src/registry.js';
 
 export function useDb(): () => Db {
   let db: Db;

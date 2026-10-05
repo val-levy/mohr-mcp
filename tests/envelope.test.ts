@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { type Db, openDb } from '../src/db.js';
-import { CoachError } from '../src/errors.js';
-import { callTool, defineTool } from '../src/tool.js';
+import { type Db, openDb } from '../src/storage/database.js';
+import { CoachError } from '../src/core/errors.js';
+import { callTool, defineTool } from '../src/core/envelope.js';
 
 const probe = defineTool({
   name: 'probe',

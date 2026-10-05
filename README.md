@@ -22,7 +22,7 @@ npm run build
 ## Register with Claude Code
 
 ```bash
-claude mcp add interview-coach -- node /absolute/path/to/mohr-mcp/dist/index.js
+claude mcp add interview-coach -- node /absolute/path/to/mohr-mcp/dist/main.js
 ```
 
 Then start a conversation with something like "I'm preparing for a software
@@ -35,7 +35,7 @@ The database lives at `~/.interview-coach/coach.db`, readable only by your
 user. Set `COACH_DB_PATH` to use a different file:
 
 ```bash
-claude mcp add interview-coach -e COACH_DB_PATH=/path/to/coach.db -- node /absolute/path/to/mohr-mcp/dist/index.js
+claude mcp add interview-coach -e COACH_DB_PATH=/path/to/coach.db -- node /absolute/path/to/mohr-mcp/dist/main.js
 ```
 
 Deleting the file deletes all stored data. The server logs one line per tool

@@ -1,10 +1,9 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { Db } from './db.js';
+import { packagePath } from '../core/paths.js';
+import type { Db } from './database.js';
 
-// Resolves to <package root>/migrations from both src/ and the compiled dist/.
-export const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations/', import.meta.url));
+export const MIGRATIONS_DIR = packagePath('db/migrations');
 
 const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 

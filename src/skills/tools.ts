@@ -1,8 +1,8 @@
-import { now, tx } from '../db.js';
-import { CoachError } from '../errors.js';
-import { updateSkillAssessmentInput } from '../schemas.js';
-import { type Tool, defineTool } from '../tool.js';
-import { requireCandidate } from './candidates.js';
+import { now, tx } from '../storage/database.js';
+import { CoachError } from '../core/errors.js';
+import { updateSkillAssessmentInput } from './schemas.js';
+import { type Tool, defineTool } from '../core/envelope.js';
+import { requireCandidate } from '../candidates/tools.js';
 
 const updateSkillAssessment = defineTool({
   name: 'update_skill_assessment',

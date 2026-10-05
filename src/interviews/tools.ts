@@ -1,15 +1,15 @@
-import { type Db, newId, now, tx } from '../db.js';
-import { CoachError } from '../errors.js';
+import { type Db, newId, now, tx } from '../storage/database.js';
+import { CoachError } from '../core/errors.js';
 import {
   createInterviewInput,
   finishInterviewInput,
   getInterviewContextInput,
   listInterviewsInput,
   recordInterviewEventInput,
-} from '../schemas.js';
-import { type Tool, defineTool } from '../tool.js';
-import { loadProfile, requireCandidate } from './candidates.js';
-import { loadJob } from './jobs.js';
+} from './schemas.js';
+import { type Tool, defineTool } from '../core/envelope.js';
+import { loadProfile, requireCandidate } from '../candidates/tools.js';
+import { loadJob } from '../jobs/tools.js';
 
 interface InterviewRow {
   id: string;

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { defaultDbPath, openDb } from './db.js';
-import { buildServer } from './server.js';
+import { buildServer } from './core/server.js';
+import { tools } from './registry.js';
+import { defaultDbPath, openDb } from './storage/database.js';
 
 const db = openDb(defaultDbPath());
-const server = buildServer(db);
+const server = buildServer(db, tools);
 
 // Close the database cleanly so the WAL is checkpointed into the main file.
 async function shutdown(): Promise<void> {

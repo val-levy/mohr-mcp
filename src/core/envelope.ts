@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { Db } from './db.js';
+import type { Db } from '../storage/database.js';
 import { type ErrorBody, fromZodError, toErrorBody } from './errors.js';
 
 export type Envelope = { success: true; data: unknown } | { success: false; error: ErrorBody };
