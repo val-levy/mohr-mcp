@@ -3,11 +3,13 @@ import { CoachError } from '../errors.js';
 import {
   createInterviewInput,
   finishInterviewInput,
+  getInterviewContextInput,
   listInterviewsInput,
   recordInterviewEventInput,
 } from '../schemas.js';
 import { type Tool, defineTool } from '../tool.js';
-import { requireCandidate } from './candidates.js';
+import { loadProfile, requireCandidate } from './candidates.js';
+import { loadJob } from './jobs.js';
 
 interface InterviewRow {
   id: string;
@@ -148,4 +150,81 @@ const listInterviews = defineTool({
   },
 });
 
-export const interviewTools: Tool[] = [createInterview, recordInterviewEvent, finishInterview, listInterviews];
+interface EventRow {
+  id: number;
+  type: string;
+  data: string;
+  created_at: string;
+}
+
+interface PerformanceRow {
+  interview_id: string;
+  job_id: string;
+  interview_type: string;
+  finished_at: string;
+  overall_score: number;
+  final_evaluation: string;
+}
+
+const RECENT_INTERVIEWS = 5;
+
+const getInterviewContext = defineTool({
+  name: 'get_interview_context',
+  description:
+    'Retrieve everything needed to continue or review an interview in one call: the candidate profile, the ' +
+    "target job, the interview, every event recorded so far (oldest first), the candidate's current and " +
+    'historical skill assessments, and the final evaluations of their five most recently finished other ' +
+    'interviews. This is the main read tool during an interview. It returns stored data only; it computes ' +
+    'no summaries.',
+  schema: getInterviewContextInput,
+  handler: (db, { interview_id }) => {
+    const interview = loadInterview(db, interview_id);
+    const events = db
+      .prepare('SELECT id, type, data, created_at FROM interview_events WHERE interview_id = ? ORDER BY id')
+      .all(interview_id) as EventRow[];
+    const recent = db
+      .prepare(
+        `SELECT id AS interview_id, job_id, type AS interview_type, finished_at, overall_score, final_evaluation
+         FROM interviews
+         WHERE candidate_id = ? AND status = 'completed' AND id <> ?
+         ORDER BY finished_at DESC, rowid DESC
+         LIMIT ?`,
+      )
+      .all(interview.candidate_id, interview_id, RECENT_INTERVIEWS) as PerformanceRow[];
+    return {
+      candidate: loadProfile(db, interview.candidate_id),
+      job: loadJob(db, interview.job_id),
+      interview,
+      previous_events: events.map((row) => ({
+        event_id: row.id,
+        type: row.type,
+        ...(JSON.parse(row.data) as Record<string, unknown>),
+        created_at: row.created_at,
+      })),
+      skill_history: {
+        current: db
+          .prepare(
+            'SELECT skill, score, confidence, evidence, updated_at FROM skill_assessments WHERE candidate_id = ? ORDER BY skill',
+          )
+          .all(interview.candidate_id),
+        history: db
+          .prepare(
+            'SELECT skill, score, confidence, evidence, interview_id, created_at FROM skill_assessment_history WHERE candidate_id = ? ORDER BY id',
+          )
+          .all(interview.candidate_id),
+      },
+      recent_performance: recent.map((row) => ({
+        ...row,
+        final_evaluation: JSON.parse(row.final_evaluation) as unknown,
+      })),
+    };
+  },
+});
+
+export const interviewTools: Tool[] = [
+  createInterview,
+  recordInterviewEvent,
+  getInterviewContext,
+  finishInterview,
+  listInterviews,
+];

@@ -137,3 +137,5 @@ export const updateSkillAssessmentInput = z.strictObject({
       message: 'each skill may appear only once per call',
     }),
 });
+
+export const getInterviewContextInput = z.strictObject({ interview_id: id });
