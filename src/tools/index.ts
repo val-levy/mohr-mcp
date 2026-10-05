@@ -1,4 +1,5 @@
 import type { Tool } from '../tool.js';
 import { candidateTools } from './candidates.js';
+import { jobTools } from './jobs.js';
 
-export const tools: Tool[] = [...candidateTools];
+export const tools: Tool[] = [...candidateTools, ...jobTools];
