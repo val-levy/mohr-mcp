@@ -18,7 +18,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "db:seed": "npm run build && node dist/seed.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
