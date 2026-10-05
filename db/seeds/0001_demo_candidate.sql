@@ -1,10 +1,11 @@
 -- Sample data for trying the server out. Loaded only by `npm run db:seed`, never on startup.
 -- Every statement must be safe to run twice.
 
-INSERT OR IGNORE INTO candidates (id, name, resume, profile, version, created_at, updated_at)
+INSERT OR IGNORE INTO candidates (id, name, name_key, resume, profile, version, created_at, updated_at)
 VALUES (
   'cand_demo',
   'Demo Candidate',
+  'demo candidate',
   'Third-year computer science student. Built a distributed key-value store and a campus events app.',
   '{"experience":[{"title":"Software Engineering Intern","organization":"Example Corp","description":"Built internal data tooling."}],"projects":[{"name":"kvstore","description":"A replicated key-value store using Raft.","technologies":["Go"]}],"skills":["Go","Python","SQL"],"interests":["distributed systems"],"preferences":["prefers hints before full solutions"]}',
   1,

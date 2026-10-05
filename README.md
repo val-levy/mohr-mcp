@@ -58,17 +58,37 @@ Every tool returns `{"success": true, "data": ...}` or
 
 | Path | Contents |
 |---|---|
-| `src/` | TypeScript only: server wiring, tools, validation |
-| `migrations/` | The database schema, as numbered SQL files |
+| `src/main.ts` | Entry point: opens the database, builds the server, connects stdio |
+| `src/registry.ts` | The list of tools the server exposes |
+| `src/core/` | Shared plumbing: server wiring, response envelope, errors, common schema types |
+| `src/storage/` | Opening the database, the migrator, the seeder |
+| `src/candidates/`, `src/jobs/`, `src/interviews/`, `src/skills/` | One folder per feature, each with its `schemas.ts` and `tools.ts` |
+| `db/migrations/` | The database schema, as numbered SQL files |
+| `db/seeds/` | Sample data, loaded only on request |
 | `prompts/` | The instructions the server sends to Claude |
 | `tests/` | The test suite |
 
 ## Changing the schema
 
-Add a new file to `migrations/` named `NNNN_description.sql` with the next
-number. The server applies pending migrations on startup, each in its own
-transaction, and records them in the `schema_migrations` table. Never edit a
-migration that has already been applied; write a new one.
+Add a file to `db/migrations/` named `NNNN_description.sql` with the next
+number. On startup the server applies pending migrations, each in its own
+transaction, and records each one with a checksum in `schema_migrations`.
+
+The server refuses to start if an applied migration has been edited or
+deleted, if a new migration is numbered below one already applied, or if a
+`.sql` file in that folder is not named like a migration. Never edit an applied
+migration; write a new one.
+
+## Sample data
+
+```bash
+npm run db:seed
+```
+
+This loads every file in `db/seeds/` into the database (the one at
+`COACH_DB_PATH`, or the default). Seeds are never loaded on startup and are
+not migrations. Nothing records that a seed ran, so each seed file must be
+safe to load twice (`INSERT OR IGNORE`).
 
 ## Development
 

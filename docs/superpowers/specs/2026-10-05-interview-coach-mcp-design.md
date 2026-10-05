@@ -31,10 +31,18 @@ Out of scope for v1: everything under "Future MCP Extensions" in the initial
 design, HTTP transport, multi-user access control, pagination, idempotency keys,
 down-migrations, and delete tools.
 
-The schema lives in versioned SQL files under `migrations/` (`0001_initial_schema.sql`,
-...), never inside TypeScript. On startup `migrate.ts` applies every file the database
-has not seen, each in its own transaction, and records it in `schema_migrations`. A
-schema change is a new numbered file; applied files are never edited.
+The schema lives in versioned SQL files under `db/migrations/` (`0001_initial_schema.sql`,
+...), never inside TypeScript. On startup the migrator applies every file the database
+has not seen, each in its own transaction, and records it with a checksum in
+`schema_migrations`. It refuses to start if an applied file was edited or removed or a
+new file is numbered out of order. A schema change is a new numbered file. Sample data
+lives in `db/seeds/` and is loaded only by `npm run db:seed`, never on startup.
+
+Code is organised by feature: `src/core/` (server, envelope, errors), `src/storage/`
+(database, migrator, seeder) and one folder each for candidates, jobs, interviews and
+skills holding that feature's `schemas.ts` and `tools.ts`. This supersedes the file
+list below. Candidate names are unique ignoring case in any script, via a folded
+`name_key` column.
 
 ## 3. Departures from the initial design
 

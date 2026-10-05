@@ -2,12 +2,12 @@ import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type Db, defaultDbPath, newId, now, openDb, tx } from '../src/storage/database.js';
+import { type Db, defaultDbPath, newId, now, openDb, retryWhileBusy, tx } from '../src/storage/database.js';
 
 function seedEvent(db: Db): void {
   const t = now();
   db.prepare(
-    "INSERT INTO candidates (id, name, profile, created_at, updated_at) VALUES ('cand_1', 'Val', '{}', ?, ?)",
+    "INSERT INTO candidates (id, name, name_key, profile, created_at, updated_at) VALUES ('cand_1', 'Val', 'val', '{}', ?, ?)",
   ).run(t, t);
   db.prepare(
     "INSERT INTO jobs (id, candidate_id, company, title, description, requirements, metadata, created_at) VALUES ('job_1', 'cand_1', 'Acme', 'SWE', 'Build things', '[]', '{}', ?)",
@@ -110,6 +110,40 @@ describe('openDb on disk', () => {
     for (const file of files) expect(statSync(file).mode & 0o777).toBe(0o600);
     second.close();
     first.close();
+  });
+});
+
+describe('retryWhileBusy', () => {
+  const busy = () => Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+
+  it('retries an operation that fails because the database is locked', () => {
+    let attempts = 0;
+    const result = retryWhileBusy(() => {
+      attempts += 1;
+      if (attempts < 3) throw busy();
+      return 'done';
+    });
+    expect(result).toBe('done');
+    expect(attempts).toBe(3);
+  });
+
+  it('gives up with the lock error once the time limit passes', () => {
+    expect(() =>
+      retryWhileBusy(() => {
+        throw busy();
+      }, 30),
+    ).toThrow('database is locked');
+  });
+
+  it('does not retry other errors', () => {
+    let attempts = 0;
+    expect(() =>
+      retryWhileBusy(() => {
+        attempts += 1;
+        throw new Error('disk I/O error');
+      }),
+    ).toThrow('disk I/O error');
+    expect(attempts).toBe(1);
   });
 });
 

@@ -290,6 +290,17 @@ describe('finish_interview', () => {
     });
   });
 
+  it('reports a bad category score as a score error even when the category name ends in _id', () => {
+    const { candidateId, jobId } = seed();
+    expect(
+      fail(getDb(), 'finish_interview', {
+        interview_id: interview(candidateId, jobId),
+        ...evaluation,
+        category_scores: { user_id: 11 },
+      }),
+    ).toMatchObject({ code: 'INVALID_SCORE', field: 'category_scores.user_id' });
+  });
+
   it('fails for an unknown interview', () => {
     expect(fail(getDb(), 'finish_interview', { interview_id: 'int_missing', ...evaluation })).toMatchObject({
       code: 'INTERVIEW_NOT_FOUND',

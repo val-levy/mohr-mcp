@@ -4,6 +4,18 @@ import { advance, fail, ok, useDb } from './helpers.js';
 const getDb = useDb();
 
 describe('create_candidate', () => {
+  it('treats names that differ only by non-ASCII case as duplicates', () => {
+    ok(getDb(), 'create_candidate', { name: 'Élodie' });
+    expect(fail(getDb(), 'create_candidate', { name: 'élodie' })).toMatchObject({
+      code: 'DUPLICATE_RESOURCE',
+      field: 'name',
+    });
+    const other = ok(getDb(), 'create_candidate', { name: 'Zoë' });
+    expect(
+      fail(getDb(), 'update_candidate_profile', { candidate_id: other.candidate_id, updates: { name: 'ÉLODIE' } }),
+    ).toMatchObject({ code: 'DUPLICATE_RESOURCE', field: 'updates.name' });
+  });
+
   it('creates a candidate with defaults', () => {
     const profile = ok(getDb(), 'create_candidate', { name: 'Val' });
     expect(profile).toEqual({

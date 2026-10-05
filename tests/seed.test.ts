@@ -24,7 +24,7 @@ function write(name: string, sql: string): void {
 }
 
 function insert(id: string, name: string): string {
-  return `INSERT INTO candidates (id, name, profile, created_at, updated_at) VALUES ('${id}', '${name}', '{}', 't', 't');`;
+  return `INSERT INTO candidates (id, name, name_key, profile, created_at, updated_at) VALUES ('${id}', '${name}', lower('${name}'), '{}', 't', 't');`;
 }
 
 function names(): string[] {

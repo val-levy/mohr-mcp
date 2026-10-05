@@ -24,11 +24,29 @@ export function openDb(path: string): Db {
     }
   }
   const db = new Database(path);
-  db.pragma('journal_mode = WAL');
+  // Two servers starting together on a new file: the switch to WAL fails at once instead of waiting.
+  retryWhileBusy(() => db.pragma('journal_mode = WAL'));
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   migrate(db);
   return db;
+}
+
+const BUSY_RETRY_INTERVAL_MS = 10;
+
+/** Runs `fn`, retrying while SQLite reports the database locked, for at most `limitMs`. */
+export function retryWhileBusy<T>(fn: () => T, limitMs = 5000): T {
+  const deadline = Date.now() + limitMs;
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      return fn();
+    } catch (error) {
+      const busy = (error as { code?: unknown }).code === 'SQLITE_BUSY';
+      if (!busy || Date.now() >= deadline) throw error;
+      Atomics.wait(sleeper, 0, 0, BUSY_RETRY_INTERVAL_MS);
+    }
+  }
 }
 
 export function tx<T>(db: Db, fn: () => T): T {

@@ -70,9 +70,13 @@ export function loadProfile(db: Db, candidateId: string) {
   };
 }
 
-// The name column is COLLATE NOCASE, so '=' ignores case.
+// Names are unique ignoring case in any script, which SQLite's own NOCASE (ASCII only) cannot do.
+function nameKey(name: string): string {
+  return name.normalize('NFKC').toLowerCase();
+}
+
 function assertNameFree(db: Db, name: string, field: string, exceptId?: string): void {
-  const clash = db.prepare('SELECT id FROM candidates WHERE name = ?').get(name) as { id: string } | undefined;
+  const clash = db.prepare('SELECT id FROM candidates WHERE name_key = ?').get(nameKey(name)) as { id: string } | undefined;
   if (clash && clash.id !== exceptId) {
     throw new CoachError(
       'DUPLICATE_RESOURCE',
@@ -95,8 +99,8 @@ const createCandidate = defineTool({
       const candidateId = newId('cand');
       const timestamp = now();
       db.prepare(
-        'INSERT INTO candidates (id, name, resume, profile, version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
-      ).run(candidateId, name, resume, JSON.stringify(profile), timestamp, timestamp);
+        'INSERT INTO candidates (id, name, name_key, resume, profile, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+      ).run(candidateId, name, nameKey(name), resume, JSON.stringify(profile), timestamp, timestamp);
       return loadProfile(db, candidateId);
     }),
 });
@@ -127,8 +131,8 @@ const updateCandidateProfile = defineTool({
       );
       const profile = { ...(JSON.parse(row.profile) as Profile), ...supplied };
       db.prepare(
-        'UPDATE candidates SET name = ?, resume = ?, profile = ?, version = version + 1, updated_at = ? WHERE id = ?',
-      ).run(name ?? row.name, resume ?? row.resume, JSON.stringify(profile), now(), candidate_id);
+        'UPDATE candidates SET name = ?, name_key = ?, resume = ?, profile = ?, version = version + 1, updated_at = ? WHERE id = ?',
+      ).run(name ?? row.name, nameKey(name ?? row.name), resume ?? row.resume, JSON.stringify(profile), now(), candidate_id);
       return loadProfile(db, candidate_id);
     }),
 });

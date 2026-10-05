@@ -1,6 +1,8 @@
 CREATE TABLE candidates (
   id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  name        TEXT NOT NULL,
+  -- name folded for comparison (Unicode-normalised, lower case); enforces unique names ignoring case
+  name_key    TEXT NOT NULL UNIQUE,
   resume      TEXT NOT NULL DEFAULT '',
   profile     TEXT NOT NULL,
   version     INTEGER NOT NULL DEFAULT 1,

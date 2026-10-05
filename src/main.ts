@@ -4,8 +4,18 @@ import { buildServer } from './core/server.js';
 import { tools } from './registry.js';
 import { defaultDbPath, openDb } from './storage/database.js';
 
-const db = openDb(defaultDbPath());
-const server = buildServer(db, tools);
+function start() {
+  try {
+    const db = openDb(defaultDbPath());
+    return { db, server: buildServer(db, tools) };
+  } catch (error) {
+    // One readable line for whoever configured the server, instead of a stack trace.
+    console.error(`interview-coach: cannot start: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
+
+const { db, server } = start();
 
 // Close the database cleanly so the WAL is checkpointed into the main file.
 async function shutdown(): Promise<void> {

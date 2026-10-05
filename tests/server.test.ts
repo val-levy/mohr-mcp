@@ -1,9 +1,12 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Db, openDb } from '../src/storage/database.js';
 import { buildServer } from '../src/core/server.js';
 import { tools } from '../src/registry.js';
+
+const packageVersion: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 let db: Db;
 let client: Client;
@@ -44,7 +47,7 @@ async function data(name: string, args?: Record<string, unknown>) {
 
 describe('server metadata', () => {
   it('identifies itself and gives usage instructions', () => {
-    expect(client.getServerVersion()).toMatchObject({ name: 'interview-coach', version: '0.1.0' });
+    expect(client.getServerVersion()).toMatchObject({ name: 'interview-coach', version: packageVersion });
     const instructions = client.getInstructions() ?? '';
     expect(instructions).toContain('list_candidates');
     expect(instructions).toContain('update_skill_assessment');

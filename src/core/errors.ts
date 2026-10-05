@@ -58,9 +58,10 @@ function valueAt(raw: unknown, path: readonly PropertyKey[]): unknown {
 function classify(issue: Issue, raw: unknown): ErrorCode {
   const path = issue.path;
   const last = path[path.length - 1];
+  // Before the _id check: category names are free text and may end in _id.
+  if (path.length === 2 && path[0] === 'category_scores') return 'INVALID_SCORE';
   if (typeof last === 'string' && last.endsWith('_id')) return 'INVALID_ID';
   if (last === 'score' || last === 'overall_score') return 'INVALID_SCORE';
-  if (path.length === 2 && path[0] === 'category_scores') return 'INVALID_SCORE';
   if (last === 'confidence') return 'INVALID_CONFIDENCE';
   if (path.length === 2 && path[0] === 'event' && last === 'type') return 'INVALID_EVENT_TYPE';
   if (last === 'interview_type') return 'INVALID_INTERVIEW_TYPE';
