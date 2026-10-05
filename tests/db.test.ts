@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -85,6 +85,17 @@ describe('openDb on disk', () => {
     expect(second.prepare('SELECT name FROM candidates').all()).toEqual([{ name: 'Val' }]);
     expect(second.prepare('SELECT count(*) AS n FROM interview_events').get()).toEqual({ n: 1 });
     second.close();
+  });
+
+  it.skipIf(process.platform === 'win32')('keeps the database private to the current user', () => {
+    dir = mkdtempSync(join(tmpdir(), 'coach-'));
+    const path = join(dir, 'private', 'coach.db');
+    const db = openDb(path);
+    seedEvent(db);
+    expect(statSync(join(dir, 'private')).mode & 0o777).toBe(0o700);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(`${path}-wal`).mode & 0o777).toBe(0o600);
+    db.close();
   });
 });
 
