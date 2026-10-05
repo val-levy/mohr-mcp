@@ -92,6 +92,39 @@ describe('migrate', () => {
     expect(() => migrate(db, dir)).toThrow(/add_a\.sql/);
   });
 
+  it('records a checksum of each applied migration', () => {
+    write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
+    migrate(db, dir);
+    expect(db.prepare('SELECT checksum FROM schema_migrations').all()).toEqual([
+      { checksum: expect.stringMatching(/^[0-9a-f]{64}$/) },
+    ]);
+  });
+
+  it('refuses to start when an applied migration has been edited', () => {
+    write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
+    migrate(db, dir);
+    write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY, extra TEXT);');
+    write('0002_add_b.sql', 'CREATE TABLE b (id INTEGER PRIMARY KEY);');
+    expect(() => migrate(db, dir)).toThrow(/0001_add_a\.sql.*changed/);
+    expect(tables()).toEqual(['a', 'schema_migrations']);
+  });
+
+  it('refuses to start when an applied migration file is missing', () => {
+    write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
+    write('0002_add_b.sql', 'CREATE TABLE b (id INTEGER PRIMARY KEY);');
+    migrate(db, dir);
+    rmSync(join(dir, '0001_add_a.sql'));
+    expect(() => migrate(db, dir)).toThrow(/0001_add_a\.sql.*missing/);
+  });
+
+  it('refuses a migration numbered below one that is already applied', () => {
+    write('0002_add_b.sql', 'CREATE TABLE b (id INTEGER PRIMARY KEY);');
+    migrate(db, dir);
+    write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
+    expect(() => migrate(db, dir)).toThrow(/0001_add_a\.sql.*out of order/);
+    expect(tables()).toEqual(['b', 'schema_migrations']);
+  });
+
   it('ignores files that are not .sql', () => {
     write('0001_add_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
     write('README.md', 'notes');
