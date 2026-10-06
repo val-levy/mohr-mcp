@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccount } from '../src/accounts/accounts.js';
 import { withAccount } from '../src/storage/database.js';
-import { ACCOUNT, OTHER_ACCOUNT, fail, ok, rows, useDb } from './helpers.js';
+import { ACCOUNT, OTHER_ACCOUNT, call, fail, ok, rows, useDb } from './helpers.js';
 
 const getDb = useDb();
 
@@ -236,6 +236,19 @@ describe('deleting an account', () => {
     await expect(
       withAccount(getDb(), ACCOUNT, (tx) => tx.query('DELETE FROM deleted_accounts')),
     ).rejects.toThrow(/permission denied/);
+  });
+
+  it('leaves nothing behind when calls and the deletion arrive together', async () => {
+    const { candidateId } = await populate();
+    const job = { candidate_id: candidateId, company: 'Acme', title: 'SWE', description: 'Build.' };
+    await Promise.all([
+      call('create_target_job', job),
+      deleteAccount(getDb(), ACCOUNT),
+      call('create_candidate', { name: 'Sam' }),
+      call('create_target_job', job),
+    ]);
+    expect(await rows('SELECT id FROM accounts')).toEqual([]);
+    expect(Object.values(await counts())).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
   it('reports false for an account that has nothing stored', async () => {
