@@ -24,6 +24,8 @@ const SUPABASE_BROWSER_CLIENT = createRequire(import.meta.url).resolve('@supabas
 interface Locals {
   requestId: string;
   accountId?: string;
+  /** The connected app the caller's token was issued to, if any. */
+  clientId?: string;
 }
 
 function localsOf(res: Response): Locals {
@@ -74,7 +76,9 @@ export function createApp(deps: AppDeps): Express {
       return;
     }
     try {
-      localsOf(res).accountId = await deps.verifyToken(token);
+      const identity = await deps.verifyToken(token);
+      localsOf(res).accountId = identity.accountId;
+      localsOf(res).clientId = identity.clientId;
     } catch {
       res.setHeader('WWW-Authenticate', challenge(config, 'invalid_token'));
       rpcError(res, 401, -32001, 'The sign-in has expired or is not valid.');
@@ -147,6 +151,12 @@ export function createApp(deps: AppDeps): Express {
 
   app.delete('/account', authenticate, async (_req, res) => {
     const accountId = localsOf(res).accountId as string;
+    // Only the person, signed in on the account page, may delete the account: never an app acting for them.
+    if (localsOf(res).clientId !== undefined) {
+      res.setHeader('WWW-Authenticate', 'Bearer error="insufficient_scope"');
+      res.status(403).json({ error: 'Delete your account from the account page.' });
+      return;
+    }
     await deleteAccount(deps.db, accountId);
     try {
       await deps.removeSignIn(accountId);

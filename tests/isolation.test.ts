@@ -219,6 +219,25 @@ describe('deleting an account', () => {
     expect(await ok('list_candidates', {}, OTHER_ACCOUNT)).toMatchObject({ candidates: [{ name: 'Val' }] });
   });
 
+  it('leaves the deleted account unusable, and other accounts usable', async () => {
+    await populate();
+    await deleteAccount(getDb(), ACCOUNT);
+    expect(await fail('list_candidates')).toMatchObject({ code: 'ACCOUNT_DELETED', retryable: false });
+    expect(await rows('SELECT id FROM accounts')).toEqual([]);
+    await expect(ok('list_candidates', {}, OTHER_ACCOUNT)).resolves.toBeDefined();
+  });
+
+  it('records nothing about a deleted account but its ID, visible to no other account', async () => {
+    await populate();
+    await deleteAccount(getDb(), ACCOUNT);
+    expect(await rows('SELECT id FROM deleted_accounts')).toEqual([{ id: ACCOUNT }]);
+    const seen = await withAccount(getDb(), OTHER_ACCOUNT, (tx) => tx.query('SELECT id FROM deleted_accounts'));
+    expect(seen).toEqual([]);
+    await expect(
+      withAccount(getDb(), ACCOUNT, (tx) => tx.query('DELETE FROM deleted_accounts')),
+    ).rejects.toThrow(/permission denied/);
+  });
+
   it('reports false for an account that has nothing stored', async () => {
     expect(await deleteAccount(getDb(), ACCOUNT)).toBe(false);
   });

@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Config } from '../src/config.js';
 import { RateLimiter } from '../src/core/rate-limit.js';
 import { createApp } from '../src/http/app.js';
-import { bearerToken, createVerifier, issuerOf } from '../src/http/auth.js';
+import { acceptedAudiences, bearerToken, createVerifier, issuerOf } from '../src/http/auth.js';
 import { tools } from '../src/registry.js';
 import { ACCOUNT, OTHER_ACCOUNT, ok, rows, useDb } from './helpers.js';
 
@@ -34,7 +34,7 @@ beforeAll(async () => {
   signingKey = pair.privateKey;
   foreignKey = (await generateKeyPair('ES256')).privateKey;
   const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'test-key', alg: 'ES256', use: 'sig' };
-  verifyToken = createVerifier(ISSUER, createLocalJWKSet({ keys: [jwk] }));
+  verifyToken = createVerifier(ISSUER, acceptedAudiences(config), createLocalJWKSet({ keys: [jwk] }));
 });
 
 interface TokenOptions {
@@ -42,13 +42,17 @@ interface TokenOptions {
   claims?: Record<string, unknown>;
   issuer?: string;
   expiresIn?: number;
+  /** null leaves the audience out. */
+  audience?: string | null;
   key?: Key;
 }
 
 /** A token as Supabase Auth issues them, signed with the test key unless told otherwise. */
 function token(options: TokenOptions = {}): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ role: 'authenticated', is_anonymous: false, ...options.claims })
+  const jwt = new SignJWT({ role: 'authenticated', is_anonymous: false, ...options.claims });
+  if (options.audience !== null) jwt.setAudience(options.audience ?? 'authenticated');
+  return jwt
     .setProtectedHeader({ alg: 'ES256', kid: 'test-key' })
     .setSubject(options.sub ?? ACCOUNT)
     .setIssuer(options.issuer ?? ISSUER)
@@ -154,10 +158,12 @@ describe('POST /mcp without an acceptable token', () => {
     ['has the anon role', () => token({ claims: { role: 'anon' } })],
     ['has the service role', () => token({ claims: { role: 'service_role' } })],
     ['has a subject that is not an account ID', () => token({ sub: 'not-a-uuid' })],
+    ['was issued for another service', () => token({ audience: 'https://other.test/mcp' })],
+    ['names no audience', () => token({ audience: null })],
     [
       'is signed with a shared secret',
       () =>
-        new SignJWT({ role: 'authenticated' })
+        new SignJWT({ role: 'authenticated', aud: 'authenticated' })
           .setProtectedHeader({ alg: 'HS256' })
           .setSubject(ACCOUNT)
           .setIssuer(ISSUER)
@@ -169,7 +175,7 @@ describe('POST /mcp without an acceptable token', () => {
       async () => {
         const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
         const exp = Math.floor(Date.now() / 1000) + 3600;
-        return `${part({ alg: 'none' })}.${part({ sub: ACCOUNT, iss: ISSUER, role: 'authenticated', exp })}.`;
+        return `${part({ alg: 'none' })}.${part({ sub: ACCOUNT, iss: ISSUER, aud: 'authenticated', role: 'authenticated', exp })}.`;
       },
     ],
   ])('answers 401 invalid_token when the token %s', async (_case, make) => {
@@ -258,6 +264,12 @@ describe('POST /mcp with a valid token', () => {
     const result = await callOver(client, 'drop_everything');
     expect(result.isError).toBe(true);
     expect(result.envelope.error.code).toBe('INVALID_INPUT');
+  });
+
+  it('accepts a token issued for this service by address', async () => {
+    const authorization = `Bearer ${await token({ audience: 'https://coach.test/mcp' })}`;
+    const response = await post({ jsonrpc: '2.0', id: 7, method: 'tools/list' }, authorization);
+    expect(response.status).toBe(200);
   });
 
   it('needs no session: any request can stand alone', async () => {
@@ -440,6 +452,39 @@ describe('DELETE /account', () => {
     expect(await rows('SELECT account_id FROM candidates')).toEqual([{ account_id: OTHER_ACCOUNT }]);
     expect(await rows('SELECT id FROM accounts')).toEqual([{ id: OTHER_ACCOUNT }]);
     expect(removed).toEqual([ACCOUNT]);
+  });
+
+  it('refuses a token that was issued to a connected app, and deletes nothing', async () => {
+    await ok('create_candidate', { name: 'Val' });
+    const response = await deleteAccountOver(`Bearer ${await token({ claims: { client_id: 'an-assistant' } })}`);
+    expect(response.status).toBe(403);
+    expect(response.headers.get('www-authenticate')).toContain('error="insufficient_scope"');
+    expect(await rows('SELECT id FROM accounts')).toEqual([{ id: ACCOUNT }]);
+    expect(removed).toEqual([]);
+  });
+
+  it('stops a token that is still valid from starting the account again', async () => {
+    const client = await connect();
+    await callOver(client, 'create_candidate', { name: 'Val' });
+    expect((await deleteAccountOver(`Bearer ${await token()}`)).status).toBe(204);
+    const after = await callOver(client, 'create_candidate', { name: 'Val' });
+    expect(after.envelope).toEqual({
+      success: false,
+      error: {
+        code: 'ACCOUNT_DELETED',
+        message: 'This account was deleted. Sign in again to start a new one.',
+        retryable: false,
+      },
+    });
+    expect(await rows('SELECT id FROM accounts')).toEqual([]);
+    expect(await rows('SELECT id FROM candidates')).toEqual([]);
+  });
+
+  it('can be repeated after it has already succeeded', async () => {
+    await ok('create_candidate', { name: 'Val' });
+    await deleteAccountOver(`Bearer ${await token()}`);
+    expect((await deleteAccountOver(`Bearer ${await token()}`)).status).toBe(204);
+    expect(removed).toEqual([ACCOUNT, ACCOUNT]);
   });
 
   it('removes the sign-in of someone who never stored anything', async () => {

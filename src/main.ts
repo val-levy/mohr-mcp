@@ -4,7 +4,7 @@ import { loadConfig } from './config.js';
 import { logToStdout } from './core/log.js';
 import { RateLimiter } from './core/rate-limit.js';
 import { createApp } from './http/app.js';
-import { createVerifier, issuerOf } from './http/auth.js';
+import { acceptedAudiences, createVerifier, issuerOf } from './http/auth.js';
 import { tools } from './registry.js';
 import { openDatabase } from './storage/database.js';
 import { assertSchemaCurrent } from './storage/migrator.js';
@@ -22,7 +22,7 @@ async function start() {
     tools,
     limiter: new RateLimiter(),
     log: logToStdout,
-    verifyToken: createVerifier(issuerOf(config.supabaseUrl)),
+    verifyToken: createVerifier(issuerOf(config.supabaseUrl), acceptedAudiences(config)),
     removeSignIn: supabaseRemoveSignIn(config),
   });
   const server = app.listen(config.port, () => {

@@ -111,6 +111,12 @@ refuses to start and reports `503` from `/readyz`.
 | `GET /healthz` | Process is up. |
 | `GET /readyz` | Database is reachable and its schema is current. |
 
+Tokens must be issued by the project, signed with an asymmetric key, and name
+the audience `authenticated` or this service's address. Deleting an account is
+only possible from the account page: a token issued to a connected app is
+refused. Once an account is deleted its ID is kept, and nothing else, so that a
+token issued before the deletion cannot start the account again.
+
 The server logs one JSON object per line to stdout: request ID, account ID,
 route or tool name, outcome, duration. It never logs tool arguments, results,
 tokens or email addresses.

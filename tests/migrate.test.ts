@@ -176,6 +176,7 @@ describe('the shipped migrations', () => {
     expect(await tables()).toEqual([
       'accounts',
       'candidates',
+      'deleted_accounts',
       'interview_events',
       'interviews',
       'jobs',

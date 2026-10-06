@@ -29,6 +29,13 @@ CREATE TABLE accounts (
   last_seen_at  timestamptz NOT NULL
 );
 
+-- IDs of accounts that were deleted, and nothing else about them. A sign-in token stays valid for a
+-- while after its account is deleted; this is what stops it from starting the account again.
+CREATE TABLE deleted_accounts (
+  id          uuid PRIMARY KEY,
+  deleted_at  timestamptz NOT NULL
+);
+
 CREATE TABLE candidates (
   id          text PRIMARY KEY,
   account_id  uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -131,11 +138,12 @@ BEFORE UPDATE ON skill_assessment_history
 FOR EACH ROW EXECUTE FUNCTION reject_update();
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON accounts, candidates, jobs, interviews, skill_assessments TO coach_app;
-GRANT SELECT, INSERT ON interview_events, skill_assessment_history TO coach_app;
+GRANT SELECT, INSERT ON interview_events, skill_assessment_history, deleted_accounts TO coach_app;
 
 -- Second line of defence behind the account filter every query carries: coach_app can only see and
 -- write rows of the account set for the current transaction, and none when no account is set.
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deleted_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE interviews ENABLE ROW LEVEL SECURITY;
@@ -144,6 +152,8 @@ ALTER TABLE skill_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE skill_assessment_history ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY own_account ON accounts TO coach_app
+  USING (id = current_account_id()) WITH CHECK (id = current_account_id());
+CREATE POLICY own_deletion ON deleted_accounts TO coach_app
   USING (id = current_account_id()) WITH CHECK (id = current_account_id());
 CREATE POLICY own_rows ON candidates TO coach_app
   USING (account_id = current_account_id()) WITH CHECK (account_id = current_account_id());

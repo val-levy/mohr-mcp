@@ -27,7 +27,7 @@ export function useDb(): () => Database {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     limiter = new RateLimiter(1_000_000);
-    await db.exec('TRUNCATE accounts RESTART IDENTITY CASCADE');
+    await db.exec('TRUNCATE accounts, deleted_accounts RESTART IDENTITY CASCADE');
   });
   afterEach(() => {
     vi.useRealTimers();
