@@ -1,56 +1,83 @@
 import { randomBytes } from 'node:crypto';
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import Database from 'better-sqlite3';
-import { migrate } from './migrator.js';
+import pg from 'pg';
 
-export type Db = Database.Database;
-
-export function defaultDbPath(): string {
-  return process.env.COACH_DB_PATH || join(homedir(), '.interview-coach', 'coach.db');
+/** Runs SQL. Inside `Database.transaction` every call uses the same connection. */
+export interface Queryable {
+  /** One statement with `$1`-style parameters. */
+  query<Row = Record<string, unknown>>(text: string, params?: readonly unknown[]): Promise<Row[]>;
+  /** One or more statements without parameters, e.g. a migration file. */
+  exec(sql: string): Promise<void>;
 }
 
-export function openDb(path: string): Db {
-  const onDisk = path !== ':memory:';
-  // The database holds resumes and interview answers: keep it private to this user.
-  if (onDisk) {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    // Create the file owner-only up front, so it is never briefly readable by others.
-    closeSync(openSync(path, 'a', 0o600));
-    // A database from an earlier run, and its WAL sidecar files, may have looser modes.
-    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
-      if (existsSync(file)) chmodSync(file, 0o600);
-    }
-  }
-  const db = new Database(path);
-  // Two servers starting together on a new file: the switch to WAL fails at once instead of waiting.
-  retryWhileBusy(() => db.pragma('journal_mode = WAL'));
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
-  migrate(db);
-  return db;
+export interface Database extends Queryable {
+  /** Runs `fn` in one transaction: committed when it resolves, rolled back when it throws. */
+  transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
 }
 
-const BUSY_RETRY_INTERVAL_MS = 10;
+const STATEMENT_TIMEOUT_MS = 10_000;
 
-/** Runs `fn`, retrying while SQLite reports the database locked, for at most `limitMs`. */
-export function retryWhileBusy<T>(fn: () => T, limitMs = 5000): T {
-  const deadline = Date.now() + limitMs;
-  const sleeper = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    try {
-      return fn();
-    } catch (error) {
-      const busy = (error as { code?: unknown }).code === 'SQLITE_BUSY';
-      if (!busy || Date.now() >= deadline) throw error;
-      Atomics.wait(sleeper, 0, 0, BUSY_RETRY_INTERVAL_MS);
-    }
-  }
+/**
+ * Runs `fn` in a transaction that can only see and write the rows of `accountId`.
+ * The settings last for this transaction only, so the connection is safe to hand back to a pool.
+ */
+export function withAccount<T>(db: Database, accountId: string, fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    // Dropping to coach_app applies row security even if the connection was opened as the table owner.
+    await tx.query(
+      `SELECT set_config('role', 'coach_app', true),
+              set_config('app.account_id', $1, true),
+              set_config('statement_timeout', $2, true)`,
+      [accountId, String(STATEMENT_TIMEOUT_MS)],
+    );
+    return fn(tx);
+  });
 }
 
-export function tx<T>(db: Db, fn: () => T): T {
-  return db.transaction(fn).immediate();
+function queryable(client: pg.Pool | pg.PoolClient): Queryable {
+  return {
+    async query<Row>(text: string, params: readonly unknown[] = []) {
+      const result = await client.query(text, params as unknown[]);
+      return result.rows as Row[];
+    },
+    async exec(sql: string) {
+      await client.query(sql);
+    },
+  };
+}
+
+export function openDatabase(connectionString: string): Database {
+  const pool = new pg.Pool({
+    connectionString,
+    max: 10,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
+  });
+  // An idle connection dropped by the server must not crash the process; the pool replaces it.
+  pool.on('error', () => {});
+  return {
+    ...queryable(pool),
+    async transaction(fn) {
+      const client = await pool.connect();
+      let broken = false;
+      try {
+        await client.query('BEGIN');
+        const result = await fn(queryable(client));
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          broken = true;
+        }
+        throw error;
+      } finally {
+        client.release(broken);
+      }
+    },
+    close: () => pool.end(),
+  };
 }
 
 export function newId(prefix: 'cand' | 'job' | 'int'): string {
@@ -59,4 +86,11 @@ export function newId(prefix: 'cand' | 'job' | 'int'): string {
 
 export function now(): string {
   return new Date().toISOString();
+}
+
+/** A timestamp column as the ISO 8601 UTC string every tool returns. */
+export function iso(value: Date): string;
+export function iso(value: Date | null): string | null;
+export function iso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
 }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Connect Interview Coach</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section id="loading">
+        <p class="muted">Loading…</p>
+      </section>
+
+      <section id="sign-in" hidden>
+        <h1>Sign in to Interview Coach</h1>
+        <p>Sign in so your interview practice is saved to your own account.</p>
+        <div class="actions">
+          <button id="google" class="primary" type="button">Continue with Google</button>
+        </div>
+      </section>
+
+      <section id="consent" hidden>
+        <h1>Connect Interview Coach</h1>
+        <p><strong id="client-name"></strong> wants to save and read your interview practice.</p>
+        <p class="muted">
+          It will be able to see and change your profile, target jobs, interviews and skill scores. After you
+          allow, you return to <span id="redirect-host"></span>.
+        </p>
+        <p class="muted">Signed in as <span id="email"></span>.</p>
+        <div class="actions">
+          <button id="allow" class="primary" type="button">Allow</button>
+          <button id="deny" type="button">Deny</button>
+        </div>
+      </section>
+
+      <section id="error" hidden>
+        <h1>Something went wrong</h1>
+        <p id="error-message" class="error"></p>
+        <p class="muted">Go back to your AI app and try connecting again.</p>
+      </section>
+    </main>
+    <script src="/assets/supabase.js"></script>
+    <script type="module" src="/assets/authorize.js"></script>
+  </body>
+</html>

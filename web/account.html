@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Your Interview Coach account</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section id="loading">
+        <p class="muted">Loading…</p>
+      </section>
+
+      <section id="sign-in" hidden>
+        <h1>Your account</h1>
+        <p>Sign in to manage your Interview Coach account.</p>
+        <div class="actions">
+          <button id="google" class="primary" type="button">Continue with Google</button>
+        </div>
+      </section>
+
+      <section id="account" hidden>
+        <h1>Your account</h1>
+        <p class="muted">Signed in as <span id="email"></span>.</p>
+        <p>
+          Deleting your account permanently removes your profiles, target jobs, interviews and skill history,
+          and your sign-in. This cannot be undone.
+        </p>
+        <label class="muted" for="confirm">Type DELETE to confirm.</label>
+        <input id="confirm" type="text" autocomplete="off" />
+        <div class="actions">
+          <button id="delete" class="danger" type="button" disabled>Delete my account</button>
+          <button id="sign-out" type="button">Sign out</button>
+        </div>
+      </section>
+
+      <section id="deleted" hidden>
+        <h1>Account deleted</h1>
+        <p>Everything stored for you has been removed. You can also remove the connector in your AI app.</p>
+      </section>
+
+      <section id="error" hidden>
+        <h1>Something went wrong</h1>
+        <p id="error-message" class="error"></p>
+        <p class="muted"><a href="/account">Try again</a></p>
+      </section>
+    </main>
+    <script src="/assets/supabase.js"></script>
+    <script type="module" src="/assets/account.js"></script>
+  </body>
+</html>

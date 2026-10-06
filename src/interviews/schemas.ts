@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageInput } from '../core/pagination.js';
 import { id, score, strings, text } from '../core/primitives.js';
 
 export const EVENT_MAX = 50_000;
@@ -48,6 +49,9 @@ export const finishInterviewInput = z.strictObject({
 export const listInterviewsInput = z.strictObject({
   candidate_id: id,
   status: z.enum(['active', 'completed']).optional(),
+  ...pageInput,
 });
 
 export const getInterviewContextInput = z.strictObject({ interview_id: id });
+
+export const listInterviewEventsInput = z.strictObject({ interview_id: id, ...pageInput });

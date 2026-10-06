@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageInput } from '../core/pagination.js';
 import { id, strings, text } from '../core/primitives.js';
 
 export const createTargetJobInput = z.strictObject({
@@ -13,4 +14,4 @@ export const createTargetJobInput = z.strictObject({
 
 export const getTargetJobInput = z.strictObject({ job_id: id });
 
-export const listTargetJobsInput = z.strictObject({ candidate_id: id });
+export const listTargetJobsInput = z.strictObject({ candidate_id: id, ...pageInput });

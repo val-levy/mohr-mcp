@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { advance, fail, ok, useDb } from './helpers.js';
 
-const getDb = useDb();
+useDb();
 
 describe('create_candidate', () => {
-  it('treats names that differ only by non-ASCII case as duplicates', () => {
-    ok(getDb(), 'create_candidate', { name: 'Élodie' });
-    expect(fail(getDb(), 'create_candidate', { name: 'élodie' })).toMatchObject({
+  it('treats names that differ only by non-ASCII case as duplicates', async () => {
+    await ok('create_candidate', { name: 'Élodie' });
+    expect(await fail('create_candidate', { name: 'élodie' })).toMatchObject({
       code: 'DUPLICATE_RESOURCE',
       field: 'name',
     });
-    const other = ok(getDb(), 'create_candidate', { name: 'Zoë' });
+    const other = await ok('create_candidate', { name: 'Zoë' });
     expect(
-      fail(getDb(), 'update_candidate_profile', { candidate_id: other.candidate_id, updates: { name: 'ÉLODIE' } }),
+      await fail('update_candidate_profile', { candidate_id: other.candidate_id, updates: { name: 'ÉLODIE' } }),
     ).toMatchObject({ code: 'DUPLICATE_RESOURCE', field: 'updates.name' });
   });
 
-  it('creates a candidate with defaults', () => {
-    const profile = ok(getDb(), 'create_candidate', { name: 'Val' });
+  it('creates a candidate with defaults', async () => {
+    const profile = await ok('create_candidate', { name: 'Val' });
     expect(profile).toEqual({
       candidate_id: expect.stringMatching(/^cand_[0-9a-f]{16}$/),
       name: 'Val',
@@ -34,7 +34,7 @@ describe('create_candidate', () => {
     });
   });
 
-  it('stores the supplied profile', () => {
+  it('stores the supplied profile', async () => {
     const input = {
       name: 'Val',
       resume: 'Resume text',
@@ -44,38 +44,38 @@ describe('create_candidate', () => {
       interests: ['distributed systems'],
       preferences: ['prefers hints late'],
     };
-    const created = ok(getDb(), 'create_candidate', input);
+    const created = await ok('create_candidate', input);
     expect(created).toMatchObject(input);
-    expect(ok(getDb(), 'get_candidate_profile', { candidate_id: created.candidate_id })).toEqual(created);
+    expect(await ok('get_candidate_profile', { candidate_id: created.candidate_id })).toEqual(created);
   });
 
-  it('rejects a name that differs only by case or surrounding whitespace', () => {
-    const first = ok(getDb(), 'create_candidate', { name: 'Val' });
-    const error = fail(getDb(), 'create_candidate', { name: '  val ' });
+  it('rejects a name that differs only by case or surrounding whitespace', async () => {
+    const first = await ok('create_candidate', { name: 'Val' });
+    const error = await fail('create_candidate', { name: '  val ' });
     expect(error).toMatchObject({ code: 'DUPLICATE_RESOURCE', field: 'name', retryable: false });
     expect(error.message).toContain(first.candidate_id);
-    expect(ok(getDb(), 'list_candidates').candidates).toHaveLength(1);
+    expect((await ok('list_candidates')).candidates).toHaveLength(1);
   });
 
-  it('rejects a whitespace-only name', () => {
-    expect(fail(getDb(), 'create_candidate', { name: '   ' })).toMatchObject({
+  it('rejects a whitespace-only name', async () => {
+    expect(await fail('create_candidate', { name: '   ' })).toMatchObject({
       code: 'INVALID_INPUT',
       field: 'name',
     });
-    expect(ok(getDb(), 'list_candidates').candidates).toEqual([]);
+    expect((await ok('list_candidates')).candidates).toEqual([]);
   });
 
-  it('accepts a resume of exactly 100000 characters and rejects one longer', () => {
-    ok(getDb(), 'create_candidate', { name: 'A', resume: 'x'.repeat(100_000) });
-    expect(fail(getDb(), 'create_candidate', { name: 'B', resume: 'x'.repeat(100_001) })).toMatchObject({
+  it('accepts a resume of exactly 100000 characters and rejects one longer', async () => {
+    await ok('create_candidate', { name: 'A', resume: 'x'.repeat(100_000) });
+    expect(await fail('create_candidate', { name: 'B', resume: 'x'.repeat(100_001) })).toMatchObject({
       code: 'INVALID_INPUT',
       field: 'resume',
     });
   });
 
-  it('rejects an unknown key inside a structured field', () => {
+  it('rejects an unknown key inside a structured field', async () => {
     expect(
-      fail(getDb(), 'create_candidate', {
+      await fail('create_candidate', {
         name: 'Val',
         experience: [{ title: 'Intern', organization: 'Acme', salary: 1 }],
       }),
@@ -84,8 +84,8 @@ describe('create_candidate', () => {
 });
 
 describe('get_candidate_profile', () => {
-  it('fails for an unknown candidate', () => {
-    expect(fail(getDb(), 'get_candidate_profile', { candidate_id: 'cand_missing' })).toEqual({
+  it('fails for an unknown candidate', async () => {
+    expect(await fail('get_candidate_profile', { candidate_id: 'cand_missing' })).toEqual({
       code: 'CANDIDATE_NOT_FOUND',
       message: "Candidate 'cand_missing' does not exist.",
       field: 'candidate_id',
@@ -93,8 +93,8 @@ describe('get_candidate_profile', () => {
     });
   });
 
-  it('rejects an empty id', () => {
-    expect(fail(getDb(), 'get_candidate_profile', { candidate_id: '' })).toMatchObject({
+  it('rejects an empty id', async () => {
+    expect(await fail('get_candidate_profile', { candidate_id: '' })).toMatchObject({
       code: 'INVALID_ID',
       field: 'candidate_id',
     });
@@ -102,15 +102,15 @@ describe('get_candidate_profile', () => {
 });
 
 describe('update_candidate_profile', () => {
-  it('replaces supplied fields whole, keeps the rest, and bumps version', () => {
-    const created = ok(getDb(), 'create_candidate', {
+  it('replaces supplied fields whole, keeps the rest, and bumps version', async () => {
+    const created = await ok('create_candidate', {
       name: 'Val',
       resume: 'v1',
       skills: ['Rust', 'Go'],
       interests: ['compilers'],
     });
     advance();
-    const updated = ok(getDb(), 'update_candidate_profile', {
+    const updated = await ok('update_candidate_profile', {
       candidate_id: created.candidate_id,
       updates: { skills: ['Python'], resume: 'v2' },
     });
@@ -125,61 +125,61 @@ describe('update_candidate_profile', () => {
     });
   });
 
-  it('can clear a list by sending an empty array', () => {
-    const created = ok(getDb(), 'create_candidate', { name: 'Val', skills: ['Rust'] });
-    const updated = ok(getDb(), 'update_candidate_profile', {
+  it('can clear a list by sending an empty array', async () => {
+    const created = await ok('create_candidate', { name: 'Val', skills: ['Rust'] });
+    const updated = await ok('update_candidate_profile', {
       candidate_id: created.candidate_id,
       updates: { skills: [] },
     });
     expect(updated.skills).toEqual([]);
   });
 
-  it('rejects a string where an array is required and changes nothing', () => {
-    const created = ok(getDb(), 'create_candidate', { name: 'Val', skills: ['Go'] });
+  it('rejects a string where an array is required and changes nothing', async () => {
+    const created = await ok('create_candidate', { name: 'Val', skills: ['Go'] });
     expect(
-      fail(getDb(), 'update_candidate_profile', {
+      await fail('update_candidate_profile', {
         candidate_id: created.candidate_id,
         updates: { skills: 'Rust' },
       }),
     ).toMatchObject({ code: 'INVALID_FIELD_TYPE', field: 'updates.skills' });
-    expect(ok(getDb(), 'get_candidate_profile', { candidate_id: created.candidate_id })).toEqual(created);
+    expect(await ok('get_candidate_profile', { candidate_id: created.candidate_id })).toEqual(created);
   });
 
-  it('rejects an unknown field', () => {
-    const created = ok(getDb(), 'create_candidate', { name: 'Val' });
+  it('rejects an unknown field', async () => {
+    const created = await ok('create_candidate', { name: 'Val' });
     expect(
-      fail(getDb(), 'update_candidate_profile', { candidate_id: created.candidate_id, updates: { age: 30 } }),
+      await fail('update_candidate_profile', { candidate_id: created.candidate_id, updates: { age: 30 } }),
     ).toMatchObject({ code: 'INVALID_FIELD', field: 'updates.age' });
   });
 
-  it('rejects empty updates', () => {
-    const created = ok(getDb(), 'create_candidate', { name: 'Val' });
+  it('rejects empty updates', async () => {
+    const created = await ok('create_candidate', { name: 'Val' });
     expect(
-      fail(getDb(), 'update_candidate_profile', { candidate_id: created.candidate_id, updates: {} }),
+      await fail('update_candidate_profile', { candidate_id: created.candidate_id, updates: {} }),
     ).toMatchObject({ code: 'INVALID_INPUT', field: 'updates' });
   });
 
-  it('fails for an unknown candidate', () => {
+  it('fails for an unknown candidate', async () => {
     expect(
-      fail(getDb(), 'update_candidate_profile', { candidate_id: 'cand_missing', updates: { skills: [] } }),
+      await fail('update_candidate_profile', { candidate_id: 'cand_missing', updates: { skills: [] } }),
     ).toMatchObject({ code: 'CANDIDATE_NOT_FOUND', field: 'candidate_id' });
   });
 
-  it('rejects renaming to a name another candidate uses, and changes nothing', () => {
-    ok(getDb(), 'create_candidate', { name: 'Val' });
-    const other = ok(getDb(), 'create_candidate', { name: 'Sam' });
+  it('rejects renaming to a name another candidate uses, and changes nothing', async () => {
+    await ok('create_candidate', { name: 'Val' });
+    const other = await ok('create_candidate', { name: 'Sam' });
     expect(
-      fail(getDb(), 'update_candidate_profile', {
+      await fail('update_candidate_profile', {
         candidate_id: other.candidate_id,
         updates: { name: 'VAL', skills: ['Go'] },
       }),
     ).toMatchObject({ code: 'DUPLICATE_RESOURCE', field: 'updates.name' });
-    expect(ok(getDb(), 'get_candidate_profile', { candidate_id: other.candidate_id })).toEqual(other);
+    expect(await ok('get_candidate_profile', { candidate_id: other.candidate_id })).toEqual(other);
   });
 
-  it("allows changing the case of the candidate's own name", () => {
-    const created = ok(getDb(), 'create_candidate', { name: 'val' });
-    const updated = ok(getDb(), 'update_candidate_profile', {
+  it("allows changing the case of the candidate's own name", async () => {
+    const created = await ok('create_candidate', { name: 'val' });
+    const updated = await ok('update_candidate_profile', {
       candidate_id: created.candidate_id,
       updates: { name: 'Val' },
     });
@@ -188,14 +188,14 @@ describe('update_candidate_profile', () => {
 });
 
 describe('list_candidates', () => {
-  it('lists summaries, most recently updated first, without profile content', () => {
-    const a = ok(getDb(), 'create_candidate', { name: 'A', resume: 'SECRET' });
+  it('lists summaries, most recently updated first, without profile content', async () => {
+    const a = await ok('create_candidate', { name: 'A', resume: 'SECRET' });
     advance();
-    const b = ok(getDb(), 'create_candidate', { name: 'B' });
+    const b = await ok('create_candidate', { name: 'B' });
     advance();
-    ok(getDb(), 'update_candidate_profile', { candidate_id: a.candidate_id, updates: { skills: ['Go'] } });
+    await ok('update_candidate_profile', { candidate_id: a.candidate_id, updates: { skills: ['Go'] } });
 
-    expect(ok(getDb(), 'list_candidates')).toEqual({
+    expect(await ok('list_candidates')).toEqual({
       candidates: [
         {
           candidate_id: a.candidate_id,
@@ -210,10 +210,11 @@ describe('list_candidates', () => {
           updated_at: '2026-01-01T00:00:01.000Z',
         },
       ],
+      next_cursor: null,
     });
   });
 
-  it('rejects unexpected arguments', () => {
-    expect(fail(getDb(), 'list_candidates', { limit: 5 })).toMatchObject({ code: 'INVALID_FIELD', field: 'limit' });
+  it('rejects unexpected arguments', async () => {
+    expect(await fail('list_candidates', { order: 'name' })).toMatchObject({ code: 'INVALID_FIELD', field: 'order' });
   });
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageInput } from '../core/pagination.js';
 import { id, strings, text } from '../core/primitives.js';
 
 export const RESUME_MAX = 100_000;
@@ -51,4 +52,6 @@ export const updateCandidateProfileInput = z.strictObject({
     }),
 });
 
-export const listCandidatesInput = z.strictObject({});
+export const listCandidatesInput = z.strictObject({ ...pageInput });
+
+export const deleteCandidateInput = z.strictObject({ candidate_id: id, confirm_name: text });

@@ -16,6 +16,9 @@ export const ERROR_CODES = [
   'INVALID_CONFIDENCE',
   'DUPLICATE_RESOURCE',
   'CONFLICT',
+  'INVALID_CURSOR',
+  'LIMIT_EXCEEDED',
+  'RATE_LIMITED',
   'DATABASE_ERROR',
   'STORAGE_UNAVAILABLE',
   'INTERNAL_ERROR',
@@ -30,7 +33,7 @@ export interface ErrorBody {
   retryable: boolean;
 }
 
-const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['STORAGE_UNAVAILABLE']);
+const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['STORAGE_UNAVAILABLE', 'RATE_LIMITED']);
 
 export class CoachError extends Error {
   readonly code: ErrorCode;
@@ -81,10 +84,31 @@ export function fromZodError(error: z.ZodError, raw: unknown): CoachError {
   return new CoachError(classify(issue, raw), `Invalid ${where}: ${issue.message}`, field === '' ? undefined : field);
 }
 
-function sqliteCode(err: unknown): string | undefined {
+// Postgres reports a five-character SQLSTATE; these classes mean "try again", not "your input is wrong".
+// 08: connection failure. 40001/40P01: serialization failure, deadlock. 53: out of resources.
+// 57: cancelled or shutting down (includes a statement timeout). 55P03: lock not available.
+const TRANSIENT_SQLSTATE = /^(08...|40001|40P01|53...|57...|55P03)$/;
+const NETWORK_ERRORS: ReadonlySet<string> = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EPIPE',
+  'EAI_AGAIN',
+]);
+
+type StorageFailure = 'transient' | 'permanent' | undefined;
+
+function storageFailure(err: unknown): StorageFailure {
   if (!(err instanceof Error)) return undefined;
   const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' && code.startsWith('SQLITE_') ? code : undefined;
+  if (typeof code === 'string') {
+    if (NETWORK_ERRORS.has(code) || TRANSIENT_SQLSTATE.test(code)) return 'transient';
+    if (/^[0-9A-Z]{5}$/.test(code)) return 'permanent';
+  }
+  // The pool gave up waiting for a free connection, or lost one mid-query.
+  if (/timeout exceeded when trying to connect|Connection terminated/i.test(err.message)) return 'transient';
+  return undefined;
 }
 
 export function toErrorBody(err: unknown): ErrorBody {
@@ -96,15 +120,15 @@ export function toErrorBody(err: unknown): ErrorBody {
       retryable: RETRYABLE.has(err.code),
     };
   }
-  const code = sqliteCode(err);
-  if (code !== undefined) {
-    if (code.startsWith('SQLITE_BUSY') || code.startsWith('SQLITE_LOCKED')) {
-      return {
-        code: 'STORAGE_UNAVAILABLE',
-        message: 'Storage is temporarily unavailable. Retrying may succeed.',
-        retryable: true,
-      };
-    }
+  const failure = storageFailure(err);
+  if (failure === 'transient') {
+    return {
+      code: 'STORAGE_UNAVAILABLE',
+      message: 'Storage is temporarily unavailable. Retrying may succeed.',
+      retryable: true,
+    };
+  }
+  if (failure === 'permanent') {
     return {
       code: 'DATABASE_ERROR',
       message: 'A database error occurred. The operation was not applied.',

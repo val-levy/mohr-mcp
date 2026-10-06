@@ -1,8 +1,8 @@
-import { now, tx } from '../storage/database.js';
-import { CoachError } from '../core/errors.js';
-import { updateSkillAssessmentInput } from './schemas.js';
+import { lockCandidate } from '../candidates/tools.js';
 import { type Tool, defineTool } from '../core/envelope.js';
-import { requireCandidate } from '../candidates/tools.js';
+import { CoachError } from '../core/errors.js';
+import { now } from '../storage/database.js';
+import { updateSkillAssessmentInput } from './schemas.js';
 
 const updateSkillAssessment = defineTool({
   name: 'update_skill_assessment',
@@ -12,49 +12,43 @@ const updateSkillAssessment = defineTool({
     'Pass interview_id to link the change to the interview that produced it. The server stores the scores ' +
     'you give and never calculates its own. All skills are saved or none are.',
   schema: updateSkillAssessmentInput,
-  handler: (db, { candidate_id, interview_id, skills }) =>
-    tx(db, () => {
-      requireCandidate(db, candidate_id);
-      if (interview_id !== undefined) {
-        const interview = db.prepare('SELECT candidate_id FROM interviews WHERE id = ?').get(interview_id) as
-          | { candidate_id: string }
-          | undefined;
-        if (!interview || interview.candidate_id !== candidate_id) {
-          throw new CoachError(
-            'INTERVIEW_NOT_FOUND',
-            `Interview '${interview_id}' does not exist for this candidate.`,
-            'interview_id',
-          );
-        }
+  handler: async (ctx, { candidate_id, interview_id, skills }) => {
+    await lockCandidate(ctx, candidate_id);
+    if (interview_id !== undefined) {
+      const [interview] = await ctx.db.query<{ candidate_id: string }>(
+        'SELECT candidate_id FROM interviews WHERE id = $1 AND account_id = $2',
+        [interview_id, ctx.accountId],
+      );
+      if (!interview || interview.candidate_id !== candidate_id) {
+        throw new CoachError(
+          'INTERVIEW_NOT_FOUND',
+          `Interview '${interview_id}' does not exist for this candidate.`,
+          'interview_id',
+        );
       }
-      const timestamp = now();
-      const upsert = db.prepare(
-        `INSERT INTO skill_assessments (candidate_id, skill, score, confidence, evidence, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+    }
+    const timestamp = now();
+    for (const entry of skills) {
+      const values = [ctx.accountId, candidate_id, entry.skill, entry.score, entry.confidence, entry.evidence];
+      await ctx.db.query(
+        `INSERT INTO skill_assessments (account_id, candidate_id, skill, score, confidence, evidence, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (candidate_id, skill) DO UPDATE SET
            score = excluded.score,
            confidence = excluded.confidence,
            evidence = excluded.evidence,
            updated_at = excluded.updated_at`,
+        [...values, timestamp],
       );
-      const append = db.prepare(
-        `INSERT INTO skill_assessment_history (candidate_id, skill, score, confidence, evidence, interview_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      await ctx.db.query(
+        `INSERT INTO skill_assessment_history
+           (account_id, candidate_id, skill, score, confidence, evidence, interview_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [...values, interview_id ?? null, timestamp],
       );
-      for (const entry of skills) {
-        upsert.run(candidate_id, entry.skill, entry.score, entry.confidence, entry.evidence, timestamp);
-        append.run(
-          candidate_id,
-          entry.skill,
-          entry.score,
-          entry.confidence,
-          entry.evidence,
-          interview_id ?? null,
-          timestamp,
-        );
-      }
-      return { candidate_id, updated: skills.map((entry) => ({ ...entry, updated_at: timestamp })) };
-    }),
+    }
+    return { candidate_id, updated: skills.map((entry) => ({ ...entry, updated_at: timestamp })) };
+  },
 });
 
 export const skillTools: Tool[] = [updateSkillAssessment];

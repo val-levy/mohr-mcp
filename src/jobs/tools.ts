@@ -1,8 +1,10 @@
-import { type Db, newId, now, tx } from '../storage/database.js';
+import { lockCandidate, requireCandidate } from '../candidates/tools.js';
+import { type Ctx, type Tool, defineTool } from '../core/envelope.js';
 import { CoachError } from '../core/errors.js';
+import { LIMITS, assertWithinLimit } from '../core/limits.js';
+import { decodeCursor, paginate, timeKey } from '../core/pagination.js';
+import { iso, newId, now } from '../storage/database.js';
 import { createTargetJobInput, getTargetJobInput, listTargetJobsInput } from './schemas.js';
-import { type Tool, defineTool } from '../core/envelope.js';
-import { requireCandidate } from '../candidates/tools.js';
 
 interface JobRow {
   id: string;
@@ -11,13 +13,16 @@ interface JobRow {
   title: string;
   description: string;
   location: string | null;
-  requirements: string;
-  metadata: string;
-  created_at: string;
+  requirements: string[];
+  metadata: Record<string, unknown>;
+  created_at: Date;
 }
 
-export function loadJob(db: Db, jobId: string) {
-  const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as JobRow | undefined;
+export async function loadJob(ctx: Ctx, jobId: string) {
+  const [row] = await ctx.db.query<JobRow>('SELECT * FROM jobs WHERE id = $1 AND account_id = $2', [
+    jobId,
+    ctx.accountId,
+  ]);
   if (!row) throw new CoachError('JOB_NOT_FOUND', `Job '${jobId}' does not exist.`, 'job_id');
   return {
     job_id: row.id,
@@ -25,10 +30,10 @@ export function loadJob(db: Db, jobId: string) {
     company: row.company,
     title: row.title,
     description: row.description,
-    requirements: JSON.parse(row.requirements) as string[],
+    requirements: row.requirements,
     location: row.location,
-    metadata: JSON.parse(row.metadata) as Record<string, unknown>,
-    created_at: row.created_at,
+    metadata: row.metadata,
+    created_at: iso(row.created_at),
   };
 }
 
@@ -38,14 +43,20 @@ const createTargetJob = defineTool({
     'Save a job the candidate is preparing for. company, title and description are required and must come ' +
     'from the user or a real posting; the server never fills in missing job information.',
   schema: createTargetJobInput,
-  handler: (db, input) =>
-    tx(db, () => {
-      requireCandidate(db, input.candidate_id);
-      const jobId = newId('job');
-      db.prepare(
-        'INSERT INTO jobs (id, candidate_id, company, title, description, location, requirements, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ).run(
+  handler: async (ctx, input) => {
+    await lockCandidate(ctx, input.candidate_id);
+    const [{ count } = { count: 0 }] = await ctx.db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM jobs WHERE candidate_id = $1 AND account_id = $2',
+      [input.candidate_id, ctx.accountId],
+    );
+    assertWithinLimit(count, LIMITS.jobsPerCandidate, 'target jobs per candidate');
+    const jobId = newId('job');
+    await ctx.db.query(
+      `INSERT INTO jobs (id, account_id, candidate_id, company, title, description, location, requirements, metadata, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)`,
+      [
         jobId,
+        ctx.accountId,
         input.candidate_id,
         input.company,
         input.title,
@@ -54,31 +65,47 @@ const createTargetJob = defineTool({
         JSON.stringify(input.requirements),
         JSON.stringify(input.metadata),
         now(),
-      );
-      return loadJob(db, jobId);
-    }),
+      ],
+    );
+    return loadJob(ctx, jobId);
+  },
 });
 
 const getTargetJob = defineTool({
   name: 'get_target_job',
   description: 'Retrieve a target job: company, title, full description, requirements, location and metadata.',
   schema: getTargetJobInput,
-  handler: (db, { job_id }) => loadJob(db, job_id),
+  handler: (ctx, { job_id }) => loadJob(ctx, job_id),
 });
+
+interface JobSummaryRow {
+  job_id: string;
+  company: string;
+  title: string;
+  location: string | null;
+  created_at: Date;
+}
 
 const listTargetJobs = defineTool({
   name: 'list_target_jobs',
-  description: "List a candidate's target jobs (id, company, title, location), newest first.",
+  description:
+    "List a candidate's target jobs (id, company, title, location), newest first. Returns up to limit jobs " +
+    '(default 50); when next_cursor is not null, pass it as cursor to get the next page.',
   schema: listTargetJobsInput,
-  handler: (db, { candidate_id }) => {
-    requireCandidate(db, candidate_id);
-    return {
-      jobs: db
-        .prepare(
-          'SELECT id AS job_id, company, title, location, created_at FROM jobs WHERE candidate_id = ? ORDER BY created_at DESC, rowid DESC',
-        )
-        .all(candidate_id),
-    };
+  handler: async (ctx, { candidate_id, limit, cursor }) => {
+    const after = decodeCursor('list_target_jobs', cursor, timeKey);
+    await requireCandidate(ctx, candidate_id);
+    const rows = await ctx.db.query<JobSummaryRow>(
+      `SELECT id AS job_id, company, title, location, created_at FROM jobs
+       WHERE candidate_id = $1 AND account_id = $2
+         AND ($3::timestamptz IS NULL OR (created_at, id) < ($3::timestamptz, $4))
+       ORDER BY created_at DESC, id DESC
+       LIMIT $5`,
+      [candidate_id, ctx.accountId, after?.[0] ?? null, after?.[1] ?? null, limit + 1],
+    );
+    const jobs = rows.map((row) => ({ ...row, created_at: iso(row.created_at) }));
+    const { items, next_cursor } = paginate('list_target_jobs', jobs, limit, (row) => [row.created_at, row.job_id]);
+    return { jobs: items, next_cursor };
   },
 });
 

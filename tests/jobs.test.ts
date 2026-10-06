@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { advance, fail, ok, useDb } from './helpers.js';
+import { advance, fail, ok, rows, useDb } from './helpers.js';
 
-const getDb = useDb();
+useDb();
 
-function candidate(name = 'Val'): string {
-  return ok(getDb(), 'create_candidate', { name }).candidate_id;
+async function candidate(name = 'Val'): Promise<string> {
+  return (await ok('create_candidate', { name })).candidate_id;
 }
 
 describe('create_target_job', () => {
-  it('creates a job with defaults for optional fields', () => {
-    const candidateId = candidate();
-    const job = ok(getDb(), 'create_target_job', {
+  it('creates a job with defaults for optional fields', async () => {
+    const candidateId = await candidate();
+    const job = await ok('create_target_job', {
       candidate_id: candidateId,
       company: 'Palantir',
       title: 'Software Engineer Intern',
@@ -29,9 +29,9 @@ describe('create_target_job', () => {
     });
   });
 
-  it('stores optional fields and returns them from get_target_job', () => {
-    const job = ok(getDb(), 'create_target_job', {
-      candidate_id: candidate(),
+  it('stores optional fields and returns them from get_target_job', async () => {
+    const job = await ok('create_target_job', {
+      candidate_id: await candidate(),
       company: 'Palantir',
       title: 'SWE Intern',
       description: 'Build data platforms.',
@@ -44,24 +44,24 @@ describe('create_target_job', () => {
       requirements: ['Java', 'distributed systems'],
       metadata: { source: 'careers page', rounds: 3 },
     });
-    expect(ok(getDb(), 'get_target_job', { job_id: job.job_id })).toEqual(job);
+    expect(await ok('get_target_job', { job_id: job.job_id })).toEqual(job);
   });
 
-  it.each([['company'], ['title'], ['description']])('requires %s', (field) => {
+  it.each([['company'], ['title'], ['description']])('requires %s', async (field) => {
     const input: Record<string, unknown> = {
-      candidate_id: candidate(),
+      candidate_id: await candidate(),
       company: 'Palantir',
       title: 'SWE Intern',
       description: 'Build data platforms.',
     };
     delete input[field];
-    expect(fail(getDb(), 'create_target_job', input)).toMatchObject({ code: 'INVALID_INPUT', field });
+    expect(await fail('create_target_job', input)).toMatchObject({ code: 'INVALID_INPUT', field });
   });
 
-  it('rejects a whitespace-only description', () => {
+  it('rejects a whitespace-only description', async () => {
     expect(
-      fail(getDb(), 'create_target_job', {
-        candidate_id: candidate(),
+      await fail('create_target_job', {
+        candidate_id: await candidate(),
         company: 'Palantir',
         title: 'SWE Intern',
         description: '   ',
@@ -69,10 +69,10 @@ describe('create_target_job', () => {
     ).toMatchObject({ code: 'INVALID_INPUT', field: 'description' });
   });
 
-  it('rejects requirements that are not an array', () => {
+  it('rejects requirements that are not an array', async () => {
     expect(
-      fail(getDb(), 'create_target_job', {
-        candidate_id: candidate(),
+      await fail('create_target_job', {
+        candidate_id: await candidate(),
         company: 'Palantir',
         title: 'SWE Intern',
         description: 'Build.',
@@ -81,22 +81,22 @@ describe('create_target_job', () => {
     ).toMatchObject({ code: 'INVALID_FIELD_TYPE', field: 'requirements' });
   });
 
-  it('fails for an unknown candidate and stores nothing', () => {
+  it('fails for an unknown candidate and stores nothing', async () => {
     expect(
-      fail(getDb(), 'create_target_job', {
+      await fail('create_target_job', {
         candidate_id: 'cand_missing',
         company: 'Palantir',
         title: 'SWE Intern',
         description: 'Build.',
       }),
     ).toMatchObject({ code: 'CANDIDATE_NOT_FOUND', field: 'candidate_id' });
-    expect(getDb().prepare('SELECT count(*) AS n FROM jobs').get()).toEqual({ n: 0 });
+    expect(await rows("SELECT count(*)::int AS n FROM jobs")).toEqual([{ n: 0 }]);
   });
 });
 
 describe('get_target_job', () => {
-  it('fails for an unknown job', () => {
-    expect(fail(getDb(), 'get_target_job', { job_id: 'job_missing' })).toEqual({
+  it('fails for an unknown job', async () => {
+    expect(await fail('get_target_job', { job_id: 'job_missing' })).toEqual({
       code: 'JOB_NOT_FOUND',
       message: "Job 'job_missing' does not exist.",
       field: 'job_id',
@@ -106,26 +106,26 @@ describe('get_target_job', () => {
 });
 
 describe('list_target_jobs', () => {
-  it("lists only that candidate's jobs as summaries, newest first", () => {
-    const mine = candidate('Val');
-    const theirs = candidate('Sam');
-    const first = ok(getDb(), 'create_target_job', {
+  it("lists only that candidate's jobs as summaries, newest first", async () => {
+    const mine = await candidate('Val');
+    const theirs = await candidate('Sam');
+    const first = await ok('create_target_job', {
       candidate_id: mine,
       company: 'Acme',
       title: 'Backend',
       description: 'SECRET DESCRIPTION',
     });
     advance();
-    const second = ok(getDb(), 'create_target_job', {
+    const second = await ok('create_target_job', {
       candidate_id: mine,
       company: 'Palantir',
       title: 'SWE Intern',
       description: 'Build.',
       location: 'Denver, CO',
     });
-    ok(getDb(), 'create_target_job', { candidate_id: theirs, company: 'Other', title: 'X', description: 'Y' });
+    await ok('create_target_job', { candidate_id: theirs, company: 'Other', title: 'X', description: 'Y' });
 
-    expect(ok(getDb(), 'list_target_jobs', { candidate_id: mine })).toEqual({
+    expect(await ok('list_target_jobs', { candidate_id: mine })).toEqual({
       jobs: [
         {
           job_id: second.job_id,
@@ -142,15 +142,16 @@ describe('list_target_jobs', () => {
           created_at: '2026-01-01T00:00:00.000Z',
         },
       ],
+      next_cursor: null,
     });
   });
 
-  it('returns an empty list for a candidate with no jobs', () => {
-    expect(ok(getDb(), 'list_target_jobs', { candidate_id: candidate() })).toEqual({ jobs: [] });
+  it('returns an empty list for a candidate with no jobs', async () => {
+    expect(await ok('list_target_jobs', { candidate_id: await candidate() })).toEqual({ jobs: [], next_cursor: null });
   });
 
-  it('fails for an unknown candidate', () => {
-    expect(fail(getDb(), 'list_target_jobs', { candidate_id: 'cand_missing' })).toMatchObject({
+  it('fails for an unknown candidate', async () => {
+    expect(await fail('list_target_jobs', { candidate_id: 'cand_missing' })).toMatchObject({
       code: 'CANDIDATE_NOT_FOUND',
     });
   });

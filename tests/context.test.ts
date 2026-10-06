@@ -1,28 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { tools } from '../src/registry.js';
-import { advance, fail, ok, useDb } from './helpers.js';
+import { advance, fail, ok, rows, useDb } from './helpers.js';
 
-const getDb = useDb();
+useDb();
 
-function seed() {
-  const candidateId: string = ok(getDb(), 'create_candidate', { name: 'Val', resume: 'Resume', skills: ['Go'] })
-    .candidate_id;
-  const jobId: string = ok(getDb(), 'create_target_job', {
+async function seed() {
+  const candidateId: string = (await ok('create_candidate', { name: 'Val', resume: 'Resume', skills: ['Go'] })).candidate_id;
+  const jobId: string = (await ok('create_target_job', {
     candidate_id: candidateId,
     company: 'Palantir',
     title: 'SWE Intern',
     description: 'Build data platforms.',
-  }).job_id;
+  })).job_id;
   return { candidateId, jobId };
 }
 
-function interview(candidateId: string, jobId: string): string {
-  return ok(getDb(), 'create_interview', { candidate_id: candidateId, job_id: jobId, interview_type: 'technical' })
-    .interview_id;
+async function interview(candidateId: string, jobId: string): Promise<string> {
+  return (await ok('create_interview', { candidate_id: candidateId, job_id: jobId, interview_type: 'technical' })).interview_id;
 }
 
-function finish(interviewId: string, overall: number): void {
-  ok(getDb(), 'finish_interview', {
+async function finish(interviewId: string, overall: number): Promise<void> {
+  await ok('finish_interview', {
     interview_id: interviewId,
     overall_score: overall,
     category_scores: { algorithms: overall },
@@ -33,16 +31,18 @@ function finish(interviewId: string, overall: number): void {
 }
 
 describe('tool registry', () => {
-  it('exposes exactly the 13 tools of the spec', () => {
+  it('exposes exactly the 15 tools of the spec', async () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       'create_candidate',
       'create_interview',
       'create_target_job',
+      'delete_candidate',
       'finish_interview',
       'get_candidate_profile',
       'get_interview_context',
       'get_target_job',
       'list_candidates',
+      'list_interview_events',
       'list_interviews',
       'list_target_jobs',
       'record_interview_event',
@@ -53,37 +53,38 @@ describe('tool registry', () => {
 });
 
 describe('get_interview_context', () => {
-  it('returns candidate, job, interview, events and skill history for an active interview', () => {
-    const { candidateId, jobId } = seed();
-    const interviewId = interview(candidateId, jobId);
+  it('returns candidate, job, interview, events and skill history for an active interview', async () => {
+    const { candidateId, jobId } = await seed();
+    const interviewId = await interview(candidateId, jobId);
     const answer = '    def bfs(g):\n\t    return "ok"  # naïve — 日本語 🚀\n\n';
-    ok(getDb(), 'record_interview_event', {
+    await ok('record_interview_event', {
       interview_id: interviewId,
       event: { type: 'question_asked', category: 'graphs', difficulty: 'medium', question: 'Shortest path?' },
     });
     advance();
-    ok(getDb(), 'record_interview_event', {
+    await ok('record_interview_event', {
       interview_id: interviewId,
       event: { type: 'question_answered', category: 'graphs', answer, hints_used: 1 },
     });
-    ok(getDb(), 'update_skill_assessment', {
+    await ok('update_skill_assessment', {
       candidate_id: candidateId,
       interview_id: interviewId,
       skills: [{ skill: 'graphs', score: 5, confidence: 0.8, evidence: 'One hint.' }],
     });
 
-    const context = ok(getDb(), 'get_interview_context', { interview_id: interviewId });
+    const context = await ok('get_interview_context', { interview_id: interviewId });
 
     expect(Object.keys(context).sort()).toEqual([
       'candidate',
+      'events_truncated',
       'interview',
       'job',
       'previous_events',
       'recent_performance',
       'skill_history',
     ]);
-    expect(context.candidate).toEqual(ok(getDb(), 'get_candidate_profile', { candidate_id: candidateId }));
-    expect(context.job).toEqual(ok(getDb(), 'get_target_job', { job_id: jobId }));
+    expect(context.candidate).toEqual(await ok('get_candidate_profile', { candidate_id: candidateId }));
+    expect(context.job).toEqual(await ok('get_target_job', { job_id: jobId }));
     expect(context.interview).toEqual({
       interview_id: interviewId,
       candidate_id: candidateId,
@@ -133,33 +134,34 @@ describe('get_interview_context', () => {
           created_at: '2026-01-01T00:00:01.000Z',
         },
       ],
+      history_truncated: false,
     });
     expect(context.recent_performance).toEqual([]);
   });
 
-  it('only includes events from this interview', () => {
-    const { candidateId, jobId } = seed();
-    const mine = interview(candidateId, jobId);
-    const other = interview(candidateId, jobId);
-    ok(getDb(), 'record_interview_event', { interview_id: other, event: { type: 'hint_given' } });
-    ok(getDb(), 'record_interview_event', { interview_id: mine, event: { type: 'question_asked' } });
-    const context = ok(getDb(), 'get_interview_context', { interview_id: mine });
+  it('only includes events from this interview', async () => {
+    const { candidateId, jobId } = await seed();
+    const mine = await interview(candidateId, jobId);
+    const other = await interview(candidateId, jobId);
+    await ok('record_interview_event', { interview_id: other, event: { type: 'hint_given' } });
+    await ok('record_interview_event', { interview_id: mine, event: { type: 'question_asked' } });
+    const context = await ok('get_interview_context', { interview_id: mine });
     expect(context.previous_events.map((e: { type: string }) => e.type)).toEqual(['question_asked']);
   });
 
-  it('returns the five most recently finished other interviews, newest first', () => {
-    const { candidateId, jobId } = seed();
+  it('returns the five most recently finished other interviews, newest first', async () => {
+    const { candidateId, jobId } = await seed();
     const finished: string[] = [];
     for (let i = 1; i <= 6; i++) {
-      const interviewId = interview(candidateId, jobId);
+      const interviewId = await interview(candidateId, jobId);
       advance();
-      finish(interviewId, i);
+      await finish(interviewId, i);
       finished.push(interviewId);
     }
-    const stillActive = interview(candidateId, jobId);
-    const current = interview(candidateId, jobId);
+    const stillActive = await interview(candidateId, jobId);
+    const current = await interview(candidateId, jobId);
 
-    const context = ok(getDb(), 'get_interview_context', { interview_id: current });
+    const context = await ok('get_interview_context', { interview_id: current });
     const ids = context.recent_performance.map((p: { interview_id: string }) => p.interview_id);
     expect(ids).toEqual([finished[5], finished[4], finished[3], finished[2], finished[1]]);
     expect(ids).not.toContain(stillActive);
@@ -178,48 +180,49 @@ describe('get_interview_context', () => {
     });
   });
 
-  it('works for a completed interview and excludes it from recent_performance', () => {
-    const { candidateId, jobId } = seed();
-    const interviewId = interview(candidateId, jobId);
-    finish(interviewId, 8);
-    const context = ok(getDb(), 'get_interview_context', { interview_id: interviewId });
+  it('works for a completed interview and excludes it from recent_performance', async () => {
+    const { candidateId, jobId } = await seed();
+    const interviewId = await interview(candidateId, jobId);
+    await finish(interviewId, 8);
+    const context = await ok('get_interview_context', { interview_id: interviewId });
     expect(context.interview).toMatchObject({ status: 'completed', overall_score: 8 });
     expect(context.interview.final_evaluation).toMatchObject({ strengths: ['s'] });
     expect(context.recent_performance).toEqual([]);
   });
 
-  it('does not include another candidate\'s interviews or skills', () => {
-    const val = seed();
-    const samId: string = ok(getDb(), 'create_candidate', { name: 'Sam' }).candidate_id;
-    const samJob: string = ok(getDb(), 'create_target_job', {
+  it('does not include another candidate\'s interviews or skills', async () => {
+    const val = await seed();
+    const samId: string = (await ok('create_candidate', { name: 'Sam' })).candidate_id;
+    const samJob: string = (await ok('create_target_job', {
       candidate_id: samId,
       company: 'Other',
       title: 'X',
       description: 'Y',
-    }).job_id;
-    finish(interview(samId, samJob), 3);
-    ok(getDb(), 'update_skill_assessment', {
+    })).job_id;
+    await finish(await interview(samId, samJob), 3);
+    await ok('update_skill_assessment', {
       candidate_id: samId,
       skills: [{ skill: 'trees', score: 2, confidence: 0.5, evidence: 'e' }],
     });
 
-    const context = ok(getDb(), 'get_interview_context', {
-      interview_id: interview(val.candidateId, val.jobId),
+    const context = await ok('get_interview_context', {
+      interview_id: await interview(val.candidateId, val.jobId),
     });
     expect(context.recent_performance).toEqual([]);
-    expect(context.skill_history).toEqual({ current: [], history: [] });
+    expect(context.skill_history).toEqual({ current: [], history: [], history_truncated: false });
   });
 
-  it('writes nothing', () => {
-    const { candidateId, jobId } = seed();
-    const interviewId = interview(candidateId, jobId);
-    const before = getDb().prepare('SELECT total_changes() AS n').get();
-    ok(getDb(), 'get_interview_context', { interview_id: interviewId });
-    expect(getDb().prepare('SELECT total_changes() AS n').get()).toEqual(before);
+  it('writes nothing', async () => {
+    const { candidateId, jobId } = await seed();
+    const interviewId = await interview(candidateId, jobId);
+    const snapshot = () => rows("SELECT (SELECT count(*)::int FROM interview_events) AS events, (SELECT count(*)::int FROM skill_assessment_history) AS history, (SELECT max(updated_at) FROM candidates) AS touched");
+    const before = await snapshot();
+    await ok('get_interview_context', { interview_id: interviewId });
+    expect(await snapshot()).toEqual(before);
   });
 
-  it('fails for an unknown interview', () => {
-    expect(fail(getDb(), 'get_interview_context', { interview_id: 'int_missing' })).toMatchObject({
+  it('fails for an unknown interview', async () => {
+    expect(await fail('get_interview_context', { interview_id: 'int_missing' })).toMatchObject({
       code: 'INTERVIEW_NOT_FOUND',
       field: 'interview_id',
     });
